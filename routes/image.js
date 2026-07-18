@@ -64,11 +64,20 @@ router.post('/process', protect, upload, async (req, res) => {
         {
             const brightVal = parseFloat(brightness) || 1.0;
             const contrastVal = parseFloat(contrast) || 0.0;
+
             image.modulate({ brightness: brightVal });
+
             if (contrastVal != 0.0) 
             {
-                 operations.adjustment = { brightness, contrast };
+                // sharp has no direct "contrast" knob, so we apply it as a
+                // linear transform: output = slope * input + intercept
+                // contrastVal is treated as a -100..100 style scale
+                const slope = 1 + contrastVal / 100;
+                const intercept = 128 * (1 - slope);
+                image.linear(slope, intercept);
             }
+
+            operations.adjustment = { brightness, contrast };
         }
         
         image.toFormat(format);
@@ -154,6 +163,41 @@ router.post('/process', protect, upload, async (req, res) => {
     }
 });
 
+// NOTE: '/clear-all' MUST be declared before the '/:id' route.
+// Express matches routes top-to-bottom, and '/:id' would otherwise
+// swallow '/clear-all' requests (treating "clear-all" as an id and
+// crashing on an invalid ObjectId cast).
+router.delete('/clear-all', protect, async (req, res) => {
+    try 
+    {
+        const images = await Image.find({ user: req.user.id });
+
+        if (images.length === 0) 
+        {
+            return res.status(200).json({ success: true, message: 'No images to delete.' });
+        }
+
+        for (const image of images) 
+        {
+            const filePath = path.join(processedDir, image.processedFileName);
+            if (fs.existsSync(filePath)) 
+            {
+                await fs.promises.unlink(filePath);
+            }
+        }
+
+        await Image.deleteMany({ user: req.user.id });
+
+        res.json({ success: true, message: 'All images have been cleared.' });
+
+    } 
+    catch (err) 
+    {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+});
+
 router.delete('/:id', protect, async (req, res) => {
     try 
     {
@@ -178,37 +222,6 @@ router.delete('/:id', protect, async (req, res) => {
         await image.deleteOne();
 
         res.json({ success: true, message: 'Image deleted successfully' });
-
-    } 
-    catch (err) 
-    {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
-});
-
-router.delete('/clear-all', protect, async (req, res) => {
-    try 
-    {
-        const images = await Image.find({ user: req.user.id });
-
-        if (images.length === 0) 
-        {
-            return res.status(200).json({ success: true, message: 'No images to delete.' });
-        }
-
-        for (const image of images) 
-        {
-            const filePath = path.join(processedDir, image.processedFileName);
-            if (fs.existsSync(filePath)) 
-            {
-                await fs.promises.unlink(filePath);
-            }
-        }
-
-        await Image.deleteMany({ user: req.user.id });
-
-        res.json({ success: true, message: 'All images have been cleared.' });
 
     } 
     catch (err) 
