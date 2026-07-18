@@ -1,26 +1,37 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const mongoose = require('mongoose');
 
-exports.protect = async (req, res, next) => {
-    let token;
-
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) 
+const ImageSchema = new mongoose.Schema({
+    user:
     {
-        token = req.headers.authorization.split(' ')[1];
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    originalName:
+    {
+        type: String,
+        required: true
+    },
+    processedFileName:
+    {
+        type: String,
+        required: true
+    },
+    path:
+    {
+        type: String,
+        required: true
+    },
+    operations:
+    {
+        type: Object,
+        default: {}
+    },
+    createdAt:
+    {
+        type: Date,
+        default: Date.now
     }
+});
 
-    if (!token) 
-    {
-        return res.status(401).json({ success: false, message: 'Not authorized to access this route' });
-    }
-
-    try 
-    {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = await User.findById(decoded.id);
-        next();
-    } catch (err) 
-    {
-        return res.status(401).json({ success: false, message: 'Not authorized to access this route' });
-    }
-};
+module.exports = mongoose.model('Image', ImageSchema);

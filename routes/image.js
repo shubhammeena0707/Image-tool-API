@@ -175,7 +175,7 @@ router.delete('/:id', protect, async (req, res) => {
             await fs.promises.unlink(filePath);
         }
 
-        await image.remove();
+        await image.deleteOne();
 
         res.json({ success: true, message: 'Image deleted successfully' });
 
