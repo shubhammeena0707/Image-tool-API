@@ -9,10 +9,7 @@ dotenv.config();
 const connectDB = async () => {
     try 
     {
-        await mongoose.connect(process.env.MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        await mongoose.connect(process.env.MONGODB_URI);
         console.log('MongoDB Connected...');
     } 
     catch (err) 
@@ -34,6 +31,21 @@ app.use('/processed', express.static(path.join(__dirname, 'processed')));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/image', require('./routes/image'));
+
+// 404 handler for unknown routes
+app.use((req, res) => {
+    res.status(404).json({ success: false, message: 'Route not found' });
+});
+
+// Central error handler so unhandled errors don't crash the process
+// or leak stack traces to the client
+app.use((err, req, res, next) => {
+    console.error(err);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Server error'
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 

@@ -29,7 +29,18 @@ const upload = multer({
     }
 }).single('image');
 
-router.post('/process', protect, upload, async (req, res) => {
+// Wrap multer so its errors are caught instead of crashing/going unhandled
+const uploadMiddleware = (req, res, next) => {
+    upload(req, res, (err) => {
+        if (err) 
+        {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        next();
+    });
+};
+
+router.post('/process', protect, uploadMiddleware, async (req, res) => {
     if (!req.file) 
     {
         return res.status(400).json({ success: false, message: 'Please upload an image' });
@@ -60,24 +71,24 @@ router.post('/process', protect, upload, async (req, res) => {
             operations.resize = { width, height };
         }
 
-        if (brightness || contrast) 
+        if (brightness) 
         {
             const brightVal = parseFloat(brightness) || 1.0;
-            const contrastVal = parseFloat(contrast) || 0.0;
-
             image.modulate({ brightness: brightVal });
+            operations.adjustment = { ...operations.adjustment, brightness };
+        }
 
-            if (contrastVal != 0.0) 
+        if (contrast) 
+        {
+            // sharp has no direct "contrast" option, so it's applied via a linear
+            // transform: output = input * a + b, centered around mid-gray (128).
+            const contrastVal = parseFloat(contrast);
+            if (!isNaN(contrastVal) && contrastVal !== 1.0) 
             {
-                // sharp has no direct "contrast" knob, so we apply it as a
-                // linear transform: output = slope * input + intercept
-                // contrastVal is treated as a -100..100 style scale
-                const slope = 1 + contrastVal / 100;
-                const intercept = 128 * (1 - slope);
-                image.linear(slope, intercept);
+                const offset = 128 * (1 - contrastVal);
+                image.linear(contrastVal, offset);
+                operations.adjustment = { ...operations.adjustment, contrast };
             }
-
-            operations.adjustment = { brightness, contrast };
         }
         
         image.toFormat(format);
@@ -122,7 +133,17 @@ router.post('/process', protect, upload, async (req, res) => {
                  }
             }
 
-            outputBuffer = bestBuffer || await image.jpeg({ quality: 1 }).toBuffer();
+            if (!bestBuffer) 
+            {
+                // Even quality 1 didn't hit the target size — fall back to the
+                // lowest quality in the SAME format the user requested.
+                currentQuality = 1;
+                bestBuffer = (format === 'jpeg')
+                    ? await image.jpeg({ quality: 1 }).toBuffer()
+                    : await image.webp({ quality: 1 }).toBuffer();
+            }
+
+            outputBuffer = bestBuffer;
             finalQuality = currentQuality;
             operations.compression.finalQuality = finalQuality;
 
@@ -163,41 +184,6 @@ router.post('/process', protect, upload, async (req, res) => {
     }
 });
 
-// NOTE: '/clear-all' MUST be declared before the '/:id' route.
-// Express matches routes top-to-bottom, and '/:id' would otherwise
-// swallow '/clear-all' requests (treating "clear-all" as an id and
-// crashing on an invalid ObjectId cast).
-router.delete('/clear-all', protect, async (req, res) => {
-    try 
-    {
-        const images = await Image.find({ user: req.user.id });
-
-        if (images.length === 0) 
-        {
-            return res.status(200).json({ success: true, message: 'No images to delete.' });
-        }
-
-        for (const image of images) 
-        {
-            const filePath = path.join(processedDir, image.processedFileName);
-            if (fs.existsSync(filePath)) 
-            {
-                await fs.promises.unlink(filePath);
-            }
-        }
-
-        await Image.deleteMany({ user: req.user.id });
-
-        res.json({ success: true, message: 'All images have been cleared.' });
-
-    } 
-    catch (err) 
-    {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
-});
-
 router.delete('/:id', protect, async (req, res) => {
     try 
     {
@@ -222,6 +208,37 @@ router.delete('/:id', protect, async (req, res) => {
         await image.deleteOne();
 
         res.json({ success: true, message: 'Image deleted successfully' });
+
+    } 
+    catch (err) 
+    {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+});
+
+router.delete('/clear-all', protect, async (req, res) => {
+    try 
+    {
+        const images = await Image.find({ user: req.user.id });
+
+        if (images.length === 0) 
+        {
+            return res.status(200).json({ success: true, message: 'No images to delete.' });
+        }
+
+        for (const image of images) 
+        {
+            const filePath = path.join(processedDir, image.processedFileName);
+            if (fs.existsSync(filePath)) 
+            {
+                await fs.promises.unlink(filePath);
+            }
+        }
+
+        await Image.deleteMany({ user: req.user.id });
+
+        res.json({ success: true, message: 'All images have been cleared.' });
 
     } 
     catch (err) 

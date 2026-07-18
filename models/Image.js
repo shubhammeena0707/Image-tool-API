@@ -1,34 +1,28 @@
 const mongoose = require('mongoose');
 
 const ImageSchema = new mongoose.Schema({
-    user:
-    {
+    user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
-    originalName:
-    {
+    originalName: {
         type: String,
         required: true
     },
-    processedFileName:
-    {
+    processedFileName: {
         type: String,
         required: true
     },
-    path:
-    {
+    path: {
         type: String,
         required: true
     },
-    operations:
-    {
+    operations: {
         type: Object,
         default: {}
     },
-    createdAt:
-    {
+    uploadDate: {
         type: Date,
         default: Date.now
     }
