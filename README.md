@@ -78,13 +78,13 @@ Make sure you have the following installed:
 Clone the repository:
 
 ```bash
-git clone https://github.com/PiyushSankhala123/Image-Tools-API.git
+git clone https://github.com/shubhammeena0707/Image-tool-API.git
 ```
 
 Navigate to the project directory:
 
 ```bash
-cd Image-Tools-API
+cd Image-tool-API
 ```
 
 Install the dependencies:
